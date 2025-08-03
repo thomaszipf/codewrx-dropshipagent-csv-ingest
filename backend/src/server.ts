@@ -27,6 +27,13 @@ await fastify.register(import('@fastify/static'), {
   prefix: '/public/'
 });
 
+await fastify.register(import('@fastify/multipart'), {
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB
+    files: 10 // Max 10 files at once
+  }
+});
+
 // Initialize CSV Ingestion Service
 const csvService = new CsvIngestionService(prisma, process.env.FTP_PATH || '../exports');
 
@@ -162,6 +169,73 @@ fastify.register(async function (fastify) {
     } catch (error) {
       fastify.log.error('Failed to process file:', error);
       throw new Error('Failed to process file');
+    }
+  });
+
+  // File upload endpoint for drag & drop CSV files
+  fastify.post('/api/upload-csv', async (request, reply) => {
+    try {
+      const files = request.files();
+      
+      const results = [];
+      const uploadDir = path.join(process.env.FTP_PATH || '../exports', 'uploads');
+      
+      // Ensure upload directory exists
+      await import('fs/promises').then(fs => fs.mkdir(uploadDir, { recursive: true }));
+      
+      for await (const file of files) {
+        if (!file.filename || !file.filename.toLowerCase().endsWith('.csv')) {
+          results.push({
+            filename: file.filename || 'unknown',
+            success: false,
+            error: 'File must be a CSV file'
+          });
+          continue;
+        }
+
+        try {
+          // Save uploaded file
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          const safeFilename = `${timestamp}_${file.filename}`;
+          const uploadPath = path.join(uploadDir, safeFilename);
+          
+          // Write file to disk
+          const fs = await import('fs/promises');
+          const buffer = await file.toBuffer();
+          await fs.writeFile(uploadPath, buffer);
+          
+          // Process the uploaded CSV file
+          const stats = await csvService.processFile(uploadPath);
+          
+          results.push({
+            filename: file.filename,
+            success: true,
+            message: 'File uploaded and processed successfully',
+            data: stats
+          });
+          
+          fastify.log.info(`Successfully processed uploaded file: ${file.filename}`);
+        } catch (error) {
+          fastify.log.error(`Failed to process uploaded file ${file.filename}:`, error);
+          results.push({
+            filename: file.filename,
+            success: false,
+            error: error instanceof Error ? error.message : 'Processing failed'
+          });
+        }
+      }
+      
+      const successCount = results.filter(r => r.success).length;
+      const totalCount = results.length;
+      
+      return {
+        success: successCount > 0,
+        message: `Processed ${successCount} of ${totalCount} files successfully`,
+        results
+      };
+    } catch (error) {
+      fastify.log.error('Failed to upload CSV files:', error);
+      throw new Error('Failed to upload CSV files');
     }
   });
 });

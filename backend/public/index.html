@@ -178,12 +178,114 @@
             border-top: 1px solid #e0e0e0;
         }
         
+        .upload-section {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .upload-drop-zone {
+            border: 2px dashed #667eea;
+            border-radius: 12px;
+            padding: 2rem;
+            text-align: center;
+            background: #f8f9ff;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            position: relative;
+        }
+        
+        .upload-drop-zone.dragover {
+            border-color: #5a6fd8;
+            background: #e8ebff;
+            transform: scale(1.02);
+        }
+        
+        .upload-drop-zone:hover {
+            border-color: #5a6fd8;
+            background: #f0f2ff;
+        }
+        
+        .upload-icon {
+            font-size: 3rem;
+            color: #667eea;
+            margin-bottom: 1rem;
+        }
+        
+        .upload-text {
+            color: #333;
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .upload-subtext {
+            color: #666;
+            font-size: 0.9rem;
+        }
+        
+        .upload-input {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+        
+        .upload-results {
+            margin-top: 1rem;
+            padding: 1rem;
+            border-radius: 8px;
+            background: #f8f9fa;
+            display: none;
+        }
+        
+        .upload-result-item {
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .upload-result-item:last-child {
+            border-bottom: none;
+        }
+        
+        .upload-success {
+            color: #28a745;
+        }
+        
+        .upload-error {
+            color: #dc3545;
+        }
+        
+        .upload-progress {
+            margin-top: 1rem;
+            padding: 1rem;
+            border-radius: 8px;
+            background: #fff3cd;
+            color: #856404;
+            display: none;
+        }
+        
         @media (max-width: 768px) {
             .main-content {
                 grid-template-columns: 1fr;
             }
             
             .header h1 {
+                font-size: 2rem;
+            }
+            
+            .upload-drop-zone {
+                padding: 1.5rem;
+            }
+            
+            .upload-icon {
                 font-size: 2rem;
             }
         }
@@ -197,6 +299,20 @@
         </div>
         
         <div id="error-container"></div>
+        
+        <div class="upload-section">
+            <h2 style="margin-bottom: 1rem; color: #333;">Upload CSV Files</h2>
+            <div class="upload-drop-zone" id="dropZone">
+                <input type="file" class="upload-input" id="fileInput" multiple accept=".csv" />
+                <div class="upload-icon">📁</div>
+                <div class="upload-text">Drag & drop CSV files here or click to browse</div>
+                <div class="upload-subtext">Support for multiple files • Max 10MB per file</div>
+            </div>
+            <div class="upload-progress" id="uploadProgress">
+                <div>Processing files...</div>
+            </div>
+            <div class="upload-results" id="uploadResults"></div>
+        </div>
         
         <div class="stats-grid" id="stats-container">
             <div class="loading">Loading statistics...</div>
@@ -389,8 +505,149 @@
             }
         }
         
+        // File upload functionality
+        function initializeUpload() {
+            const dropZone = document.getElementById('dropZone');
+            const fileInput = document.getElementById('fileInput');
+            const uploadProgress = document.getElementById('uploadProgress');
+            const uploadResults = document.getElementById('uploadResults');
+            
+            // Prevent default drag behaviors
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, preventDefaults, false);
+                document.body.addEventListener(eventName, preventDefaults, false);
+            });
+            
+            // Highlight drop zone when item is dragged over it
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropZone.addEventListener(eventName, highlight, false);
+            });
+            
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, unhighlight, false);
+            });
+            
+            // Handle dropped files
+            dropZone.addEventListener('drop', handleDrop, false);
+            
+            // Handle file input change
+            fileInput.addEventListener('change', function() {
+                handleFiles(this.files);
+            });
+            
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            
+            function highlight() {
+                dropZone.classList.add('dragover');
+            }
+            
+            function unhighlight() {
+                dropZone.classList.remove('dragover');
+            }
+            
+            function handleDrop(e) {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                handleFiles(files);
+            }
+            
+            async function handleFiles(files) {
+                if (files.length === 0) return;
+                
+                // Show progress
+                uploadProgress.style.display = 'block';
+                uploadResults.style.display = 'none';
+                
+                // Create FormData
+                const formData = new FormData();
+                const csvFiles = [];
+                
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    if (file.name.toLowerCase().endsWith('.csv')) {
+                        formData.append('files', file);
+                        csvFiles.push(file.name);
+                    }
+                }
+                
+                if (csvFiles.length === 0) {
+                    showError('Please select at least one CSV file.');
+                    uploadProgress.style.display = 'none';
+                    return;
+                }
+                
+                try {
+                    const response = await fetch('/api/upload-csv', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    
+                    const result = await response.json();
+                    displayUploadResults(result);
+                    
+                    // Refresh data after successful upload
+                    if (result.success) {
+                        setTimeout(() => {
+                            loadData();
+                        }, 1000);
+                    }
+                } catch (error) {
+                    showError(`Upload failed: ${error.message}`);
+                } finally {
+                    uploadProgress.style.display = 'none';
+                    // Reset file input
+                    fileInput.value = '';
+                }
+            }
+            
+            function displayUploadResults(result) {
+                uploadResults.style.display = 'block';
+                
+                const successCount = result.results ? result.results.filter(r => r.success).length : 0;
+                const totalCount = result.results ? result.results.length : 0;
+                
+                let html = `
+                    <div style="margin-bottom: 1rem; font-weight: 600;">
+                        Upload Results: ${successCount}/${totalCount} files processed successfully
+                    </div>
+                `;
+                
+                if (result.results) {
+                    result.results.forEach(fileResult => {
+                        const statusClass = fileResult.success ? 'upload-success' : 'upload-error';
+                        const statusText = fileResult.success ? '✅ Success' : '❌ Failed';
+                        const message = fileResult.success ? 
+                            `${fileResult.data?.recordsProcessed || 0} records processed` : 
+                            fileResult.error;
+                        
+                        html += `
+                            <div class="upload-result-item">
+                                <div>
+                                    <div style="font-weight: 600;">${fileResult.filename}</div>
+                                    <div style="font-size: 0.9rem; color: #666;">${message}</div>
+                                </div>
+                                <div class="${statusClass}">${statusText}</div>
+                            </div>
+                        `;
+                    });
+                }
+                
+                uploadResults.innerHTML = html;
+            }
+        }
+        
         // Initial load
         loadData();
+        
+        // Initialize upload functionality
+        initializeUpload();
         
         // Auto-refresh every 30 seconds
         setInterval(loadData, 30000);
