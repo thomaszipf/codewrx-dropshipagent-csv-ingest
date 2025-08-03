@@ -624,7 +624,7 @@
                         const statusClass = fileResult.success ? 'upload-success' : 'upload-error';
                         const statusText = fileResult.success ? '✅ Success' : '❌ Failed';
                         const message = fileResult.success ? 
-                            `${fileResult.data?.recordsProcessed || 0} records processed` : 
+                            `${(fileResult.data?.recordsInserted || 0) + (fileResult.data?.recordsUpdated || 0)} records processed (${fileResult.data?.recordsInserted || 0} new, ${fileResult.data?.recordsUpdated || 0} updated)` : 
                             fileResult.error;
                         
                         html += `
