@@ -30,7 +30,7 @@ await fastify.register(import('@fastify/static'), {
 await fastify.register(import('@fastify/multipart'), {
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB
-    files: 10 // Max 10 files at once
+    files: 50 // Max 50 files at once
   }
 });
 
