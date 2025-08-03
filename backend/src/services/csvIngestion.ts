@@ -387,9 +387,18 @@ export class CsvIngestionService {
   }
 
   private extractShopName(filename: string): string {
+    // Handle uploaded files with timestamp prefix like "2025-08-03T23-20-16-775Z_ShopName (1234-5678).csv"
+    let cleanFilename = filename;
+    
+    // Remove timestamp prefix if present (format: YYYY-MM-DDTHH-mm-ss-sssZ_)
+    const timestampMatch = cleanFilename.match(/^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z_(.+)$/);
+    if (timestampMatch) {
+      cleanFilename = timestampMatch[1];
+    }
+    
     // Extract shop name from filename like "ShopName (1234-5678).csv"
-    const match = filename.match(/^(.+?)\s*\(/);
-    return match ? match[1].trim() : filename.replace('.csv', '');
+    const match = cleanFilename.match(/^(.+?)\s*\(/);
+    return match ? match[1].trim() : cleanFilename.replace('.csv', '');
   }
 
   private async calculateFileHash(filePath: string): Promise<string> {
