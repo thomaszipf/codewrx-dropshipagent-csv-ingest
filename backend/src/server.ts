@@ -228,6 +228,8 @@ fastify.register(async function (fastify) {
       const successCount = results.filter(r => r.success).length;
       const totalCount = results.length;
       
+      fastify.log.info(`Upload complete: ${successCount}/${totalCount} files processed successfully`);
+      
       return {
         success: successCount > 0,
         message: `Processed ${successCount} of ${totalCount} files successfully`,
@@ -235,7 +237,11 @@ fastify.register(async function (fastify) {
       };
     } catch (error) {
       fastify.log.error('Failed to upload CSV files:', error);
-      throw new Error('Failed to upload CSV files');
+      return reply.code(500).send({
+        success: false,
+        message: 'Failed to upload CSV files',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   });
 });
