@@ -1,0 +1,270 @@
+// CSV Ingestion Backend Prisma Schema - SQLite Version
+// Shopify-independent version of DropshipAgent schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// CORE ENTITIES (Shopify-Independent)
+// ============================================================================
+
+model Shop {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  displayName String?  @map("display_name")
+  
+  // Processing Status
+  isActive    Boolean  @default(true) @map("is_active")
+  lastSync    DateTime? @map("last_sync")
+  
+  // Metadata
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+
+  // Relations
+  customers   Customer[]
+  products    Product[]
+  orders      Order[]
+  csvFiles    CsvFile[]
+
+  @@map("shops")
+}
+
+model CsvFile {
+  id             String    @id @default(cuid())
+  shopId         String    @map("shop_id")
+  filename       String
+  filePath       String    @map("file_path")
+  fileSize       Int       @map("file_size")
+  fileHash       String    @map("file_hash")
+  
+  // Processing Status
+  status         String    @default("pending")
+  processedAt    DateTime? @map("processed_at")
+  errorMessage   String?   @map("error_message")
+  
+  // Statistics
+  recordsTotal   Int       @default(0) @map("records_total")
+  recordsInserted Int      @default(0) @map("records_inserted")
+  recordsUpdated Int       @default(0) @map("records_updated")
+  recordsErrors  Int       @default(0) @map("records_errors")
+  
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  // Relations
+  shop           Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, fileHash])
+  @@map("csv_files")
+}
+
+// ============================================================================
+// CUSTOMER DATA
+// ============================================================================
+
+model Customer {
+  id                 String   @id @default(cuid())
+  shopId             String   @map("shop_id")
+  externalId         String?  @map("external_id")
+  email              String?
+  firstName          String?  @map("first_name")
+  lastName           String?  @map("last_name")
+  phone              String?
+  acceptsMarketing   Boolean? @map("accepts_marketing")
+  
+  // Privacy compliance fields
+  anonymizedAt       DateTime? @map("anonymized_at")
+  
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at")
+
+  // Relations
+  shop               Shop            @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  addresses          CustomerAddress[]
+  orders             Order[]
+
+  @@unique([shopId, externalId])
+  @@map("customers")
+}
+
+model CustomerAddress {
+  id          String   @id @default(cuid())
+  customerId  String   @map("customer_id")
+  addressType String   @default("shipping") @map("address_type")
+  
+  firstName   String?  @map("first_name")
+  lastName    String?  @map("last_name")
+  company     String?
+  address1    String
+  address2    String?
+  city        String
+  province    String?
+  provinceName String? @map("province_name")
+  country     String
+  zip         String?
+  phone       String?
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  // Relations
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@map("customer_addresses")
+}
+
+// ============================================================================
+// PRODUCT MANAGEMENT
+// ============================================================================
+
+model Product {
+  id                String   @id @default(cuid())
+  shopId            String   @map("shop_id")
+  externalId        String?  @map("external_id")
+  
+  title             String
+  vendor            String?
+  productType       String?  @map("product_type")
+  handle            String?
+  
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at")
+
+  // Relations
+  shop              Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  variants          ProductVariant[]
+  orderLineItems    OrderLineItem[]
+
+  @@unique([shopId, externalId])
+  @@map("products")
+}
+
+model ProductVariant {
+  id                String   @id @default(cuid())
+  productId         String   @map("product_id")
+  externalId        String?  @map("external_id")
+  
+  title             String?
+  sku               String?
+  price             Float?
+  compareAtPrice    Float?   @map("compare_at_price")
+  requiresShipping  Boolean  @default(true) @map("requires_shipping")
+  taxable           Boolean  @default(true)
+  
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at")
+
+  // Relations
+  product           Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orderLineItems    OrderLineItem[]
+
+  @@map("product_variants")
+}
+
+// ============================================================================
+// ORDER MANAGEMENT
+// ============================================================================
+
+model Order {
+  id                   String    @id @default(cuid())
+  shopId               String    @map("shop_id")
+  externalId           String?   @map("external_id")
+  customerId           String?   @map("customer_id")
+  
+  // Order Details from CSV
+  orderNumber          String?   @map("order_number")
+  subtotalPrice        Float?    @map("subtotal_price")
+  shippingPrice        Float?    @map("shipping_price")
+  totalTax             Float?    @map("total_tax")
+  totalPrice           Float?    @map("total_price")
+  currency             String    @default("USD")
+  
+  // Status Information
+  financialStatus      String?   @map("financial_status")
+  fulfillmentStatus    String?   @map("fulfillment_status")
+  
+  // Payment Details
+  paymentMethod        String?   @map("payment_method")
+  paymentReference     String?   @map("payment_reference")
+  paidAt               DateTime? @map("paid_at")
+  
+  // Shipping
+  shippingMethod       String?   @map("shipping_method")
+  fulfilledAt          DateTime? @map("fulfilled_at")
+  
+  // Discounts
+  discountCode         String?   @map("discount_code")
+  discountAmount       Float?    @map("discount_amount")
+  
+  // Metadata
+  tags                 String?
+  riskLevel            String?   @map("risk_level")
+  source               String?
+  notes                String?
+  cancelledAt          DateTime? @map("cancelled_at")
+  refundedAmount       Float?    @map("refunded_amount")
+  
+  // Timestamps
+  orderDate            DateTime? @map("order_date")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  // Relations
+  shop                 Shop             @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  customer             Customer?        @relation(fields: [customerId], references: [id])
+  lineItems            OrderLineItem[]
+
+  @@unique([shopId, externalId])
+  @@map("orders")
+}
+
+model OrderLineItem {
+  id                  String   @id @default(cuid())
+  orderId             String   @map("order_id")
+  productId           String?  @map("product_id")
+  variantId           String?  @map("variant_id")
+  
+  // Line Item Details from CSV
+  title               String?
+  variantTitle        String?  @map("variant_title")
+  sku                 String?
+  quantity            Int
+  price               Float?
+  compareAtPrice      Float?   @map("compare_at_price")
+  totalDiscount       Float    @default(0) @map("total_discount")
+  
+  // Fulfillment
+  requiresShipping    Boolean  @default(true) @map("requires_shipping")
+  taxable             Boolean  @default(true)
+  fulfillmentStatus   String   @default("unfulfilled") @map("fulfillment_status")
+  
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  // Relations
+  order               Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product             Product?         @relation(fields: [productId], references: [id])
+  variant             ProductVariant?  @relation(fields: [variantId], references: [id])
+
+  @@map("order_line_items")
+}
+
+// ============================================================================
+// SYSTEM MONITORING
+// ============================================================================
+
+model ProcessingLog {
+  id          String   @id @default(cuid())
+  shopId      String?  @map("shop_id")
+  level       String   // info, warn, error
+  message     String
+  context     String?  // JSON string for additional context data
+  timestamp   DateTime @default(now())
+
+  @@map("processing_logs")
+}

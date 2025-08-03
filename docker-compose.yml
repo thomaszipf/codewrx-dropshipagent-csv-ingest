@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: csv-ingest-db
+    environment:
+      POSTGRES_DB: csv_ingestion
+      POSTGRES_USER: csvuser
+      POSTGRES_PASSWORD: csvpassword
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U csvuser -d csv_ingestion"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: csv-ingest-backend
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://csvuser:csvpassword@postgres:5432/csv_ingestion
+      JWT_SECRET: your-jwt-secret-change-in-production
+      BCRYPT_ROUNDS: 12
+    volumes:
+      - ./exports:/app/ftp:ro
+      - ./logs:/app/logs
+    ports:
+      - "3001:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    container_name: csv-ingest-nginx
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/.htpasswd:/etc/nginx/.htpasswd:ro
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
